@@ -68,6 +68,15 @@ def export_mgn(context,
     bm.transform(global_matrix @ ob_mat)
     mesh_triangulate(bm)
 
+    tang_lib = []
+    bm.calc_tangents()
+    for i, loop in enumerate(bm.loops):
+        a = loop.tangent[:]
+        b = list(a)
+        b.insert(3, 1.0)
+        b = tuple(b)
+        tang_lib.append(b[:])
+
     mgn = swg_types.SWGMgn(filepath)
 
     for key in current_obj.keys():
@@ -80,6 +89,10 @@ def export_mgn(context,
         mgn.positions.append(vert.co)
         mgn.normals.append(vert.normal)
 
+    mgn.dot3=[]
+    for tang in tang_lib:
+        mgn.dot3.append(tang)
+
     twhd = []
     twdt = []
     for keys in bpy.data.shape_keys:
@@ -91,9 +104,11 @@ def export_mgn(context,
                 basis = keys.key_blocks[0].data
                 for j, kv in enumerate(key.data):
                     delta = kv.co - basis[j].co
+                    #delta_normal = kv.normal  - basis[j].normal
                     if delta[0] != 0 and delta[1] != 0 and delta[2] != 0:
                         blt.positions.append([j, delta[:]])
                         blt.normals.append([j, [0,0,0]])
+                        #blt.normals.append([j, delta_normal])
                     
                     # norm = kv.normal - basis[j].normal
                 mgn.blends.append(blt)
@@ -112,9 +127,10 @@ def export_mgn(context,
     print(f'faces_by_material: {[(str(len(faces_by_material[key]))) for key in faces_by_material]}')
 
     
-    num_uv_layers = len(bm.uv_layers)
-
+    #num_uv_layers = len(bm.uv_layers)    
+    uv_layer = bm.uv_layers.active.data[:]
     for material_index in faces_by_material:
+        last_tri_index = None
         faces = faces_by_material[material_index]
         psdt = swg_types.SWGPerShaderData()
         psdt.name = current_obj.material_slots[material_index].material.name
@@ -131,7 +147,14 @@ def export_mgn(context,
         pidx_id = 0
 
         psdt.prims.append([])
+        psdt.uvs.append([])
+        psdt.dot3 = []
+
+        
         for f in faces:
+            t1=None
+            t2=None
+            t3=None
             for uv_index, l_index in enumerate(f.loop_indices):
                 master_vert_id = f.vertices[uv_index]
 
@@ -139,21 +162,37 @@ def export_mgn(context,
                     reverse_position_lookup[master_vert_id] =  pidx_id                    
                     pidx_id += 1
 
-                if not master_vert_id in psdt.pidx:
-                    psdt.pidx.append(master_vert_id)
-                    psdt.nidx.append(pidx_id)
-
+                #if not master_vert_id in psdt.pidx:
+                psdt.pidx.append(master_vert_id)
+                psdt.nidx.append(master_vert_id)
+                psdt.uvs[0].append(uv_layer[l_index].uv)
+                psdt.dot3.append(l_index)
                     # for i, layer in enumerate(bm.uv_layers):
                     #     uv = layer.data[l_index].uv
                     #     psdt.uvs[i].append(uv)
                     
                 #uv = uv_layer[l_index].uv     
                 #final_uv = (uv_layer[l_index].uv[0], 1-(uv_layer[l_index].uv[1]))           
-                #print(f' loop_index: {l_index}, uv_index: {uv_index}, vert_index: {f.vertices[uv_index]} vert: {bm.vertices[f.vertices[uv_index]]}')    
+                print(f' loop_index: {l_index}, uv_index: {uv_index}, vert_index: {f.vertices[uv_index]} vert: {bm.vertices[f.vertices[uv_index]]}')    
                 #uv_dict[l_index] = f.vertices[uv_index], final_uv, f.material_index, l_index, (tuple(v for v in f.vertices))
                 #all_positions.add((f.vertices[uv_index], uv_index))
-
-                psdt.prims[0].append(reverse_position_lookup[master_vert_id])
+                
+                if last_tri_index == None:
+                    last_tri_index = l_index
+                    
+                if t1 == None:
+                    #t1 = reverse_position_lookup[master_vert_id]
+                    t1 = l_index - last_tri_index
+                elif t2 == None:
+                    #t2 = reverse_position_lookup[master_vert_id]
+                    t2 = l_index - last_tri_index
+                else:
+                    #t3 = reverse_position_lookup[master_vert_id]
+                    t3 = l_index - last_tri_index
+                    psdt.prims[0].append(t1)
+                    psdt.prims[0].append(t2)
+                    psdt.prims[0].append(t3)
+                #psdt.prims[0].append(reverse_position_lookup[master_vert_id])
 
     vertex_groups = current_obj.vertex_groups
     bone_names = vertex_groups.keys()
@@ -168,7 +207,7 @@ def export_mgn(context,
                     if not v.index in twdtdata:
                         twdtdata[v.index] = []
                     twdtdata[v.index].append([indexval, n.weight])
-    print(f'TWDT: {str(twdtdata)}')
+    #print(f'TWDT: {str(twdtdata)}')
     mgn.twdt = list(twdtdata.values())
 
     mgn.write()

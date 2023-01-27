@@ -564,6 +564,20 @@ class SWGMgn(object):
     def __repr__(self):
         return self.__str__()
 
+    def normalize_vertex_weights(self, weights):
+        print(f'Weights at start: {str(weights)}')
+
+        for i , posn in enumerate(weights):
+            total = 0
+            for weight in posn:
+                total += weight[1]
+
+            for weight in posn:
+                before = weight[1]
+                weight[1] = weight[1]/total 
+                if weight[1] != before:
+                    print(f"Vert {i} changed weight for bone {weight[0]} from {before} to {weight[1]}")
+        
     def load(self):
         iff = nsg_iff.IFF(filename=self.filename)
         print(f"Name: {iff.getCurrentName()} Length: {iff.getCurrentLength()}")
@@ -648,6 +662,8 @@ class SWGMgn(object):
             if sum != 1.0:
                 print(f' *** WARN ***: Vertex Weight sum for vert: {p} != 1.0 : {sum}')
             self.vertex_weights[p] = these_weights
+        
+        self.normalize_vertex_weights(self.vertex_weights)
 
         #self.positions = list(zip(self.positions, self.vertex_weights))
 
@@ -734,10 +750,17 @@ class SWGMgn(object):
                 psdt.name = iff.read_string()
                 iff.exitChunk("NAME")
 
+                already_seen=set()
                 iff.enterChunk("PIDX")
                 num = iff.read_uint32()
                 while not iff.atEndOfForm():
-                    psdt.pidx.append(iff.read_uint32())
+                    i = iff.read_uint32()
+                    psdt.pidx.append(i)
+                    if i in already_seen:
+                        print(f"PSDT Already seen position index: {i}")
+                    else:
+                        already_seen.add(i)
+
                 iff.exitChunk("PIDX")
 
                 iff.enterChunk("NIDX")
@@ -908,6 +931,13 @@ class SWGMgn(object):
         #         i += 1
         #     iff.exitChunk("DOT3")
 
+        #if do dot3 ...
+        iff.insertChunk("DOT3")
+        iff.insert_uint32(len(self.dot3))
+        for dot3 in self.dot3:
+            iff.insertFloatVector4(dot3)
+        iff.exitChunk("DOT3")
+
 
         # if iff.getCurrentName() == "HPTS":
         #     iff.enterForm("HPTS")
@@ -985,11 +1015,16 @@ class SWGMgn(object):
                 iff.insert_uint32(nidx)
             iff.exitChunk("NIDX")
 
+            iff.insertChunk("DOT3")
+            for dot3 in psdt.dot3:
+                iff.insert_uint32(dot3)
+            iff.exitChunk("DOT3")
+
             if len(psdt.uvs) > 0:
                 iff.insertChunk("TXCI")
                 iff.insert_int32(len(psdt.uvs))
-                for dim in psdt.uv_dimensions:
-                    iff.insert_int32(dim)
+                for uv_set in psdt.uvs:
+                    iff.insert_int32(len(uv_set[0]))
                 iff.exitChunk("TXCI")
 
                 iff.insertForm("TCSF")

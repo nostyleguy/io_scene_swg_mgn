@@ -38,6 +38,7 @@ if "bpy" in locals():
     imp.reload(mgnexport)
     imp.reload(swg_types)
     imp.reload(vector3D)
+    imp.reload(vertex_buffer_format)
 else:    
     from . import iff_tools
     from . import mgn_tools
@@ -45,6 +46,7 @@ else:
     from . import mgnexport
     from . import swg_types
     from . import vector3D
+    from . import vertex_buffer_format
 
 import bpy
 
