@@ -23,7 +23,7 @@
 bl_info = {
     'name': "SWG Animated Mesh (.mgn)",
     "author": "Nick Rafalski (bug fixes and Blender 3+ support)",
-    "version": (1, 0, 2),
+    "version": (1, 0, 3),
     "blender": (2, 81, 6),
     "location":"File > Import-Export",
     "description": "Import and Export SWG animated meshes(.mgn)",
@@ -59,6 +59,7 @@ from bpy.props import (
         )
 
 from bpy_extras.io_utils import (
+        ImportHelper,
         ExportHelper,
         orientation_helper,
         axis_conversion,
@@ -85,6 +86,45 @@ class MGN_PT_import_option(bpy.types.Panel):
         sfile = context.space_data
         operator = sfile.active_operator
 
+
+@orientation_helper(axis_forward='Z', axis_up='Z')
+class ImportMGN(bpy.types.Operator, ImportHelper):
+    """Load a SWG MGN File"""
+    bl_idname = "import_scene.mgn"
+    bl_label = "Import Mgn"
+    bl_options = {'PRESET', 'UNDO'}
+
+    filename_ext = ".mgn"
+    filter_glob: StringProperty(
+                default="*.mgn",
+                options={'HIDDEN'},
+        )
+
+    def execute(self, context):      
+
+        keywords = self.as_keywords(ignore=("axis_forward",
+                                            "axis_up",
+                                            "filter_glob",
+                                            ))
+
+        global_matrix = axis_conversion(from_forward=self.axis_forward,
+                                        from_up=self.axis_up,
+                                        ).to_4x4()
+        keywords["global_matrix"] = global_matrix
+
+        # if bpy.data.is_saved and context.preferences.filepaths.use_relative_paths:
+        #     import os
+        #     keywords["relpath"] = os.path.dirname(bpy.data.filepath)
+
+        result = mgnimport.import_mgn(context, **keywords)
+        if 'ERROR' in result:
+            self.report({'ERROR'}, 'Something went wrong importing MGN')
+            return {'CANCELLED'}
+        
+        return {'FINISHED'}
+
+    def draw(self, context):
+        pass
 
 @orientation_helper(axis_forward='Z', axis_up='Y')
 class ExportMGN(bpy.types.Operator, ExportHelper):
@@ -128,11 +168,12 @@ class ExportMGN(bpy.types.Operator, ExportHelper):
                                          ).to_4x4())
 
         keywords["global_matrix"] = global_matrix
-        exported = mgnexport.export_mgn(context, **keywords)
-        if exported:
-            return {'FINISHED'}
-        else:
-            return {'CANCELLED'}
+        result = mgnexport.export_mgn(context, **keywords)
+        if 'ERROR' in result:
+                self.report({'ERROR'}, 'Something went wrong exporting MGN')
+                return {'CANCELLED'}
+        
+        return {'FINISHED'}
 
     def draw(self, context):
         pass
@@ -169,14 +210,14 @@ class MGN_PT_export_option(bpy.types.Panel):
 
 ## function calls
 def mgn_import(self, context):
-    self.layout.operator(mgnimport.IMPORT_OT_galaxies_mgn.bl_idname, text="SWG Animated Meshes (.mgn)")
+    self.layout.operator(ImportMGN.bl_idname, text="SWG Animated Mesh (.mgn)")
 
 def mgn_export(self, context):
-    self.layout.operator(ExportMGN.bl_idname, text="SWG Animated Meshes (.mgn)")
+    self.layout.operator(ExportMGN.bl_idname, text="SWG Animated Mesh (.mgn)")
 
 
 classes = {
-    mgnimport.IMPORT_OT_galaxies_mgn,
+    ImportMGN,
     MGN_PT_export_option,
     ExportMGN,    
     MGN_PT_import_option,

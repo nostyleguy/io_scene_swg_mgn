@@ -35,7 +35,10 @@ from bpy_extras.io_utils import unpack_list, unpack_face_list
 from mathutils import Vector
 from . import iff_tools, mgn_tools
 
-def import_mgn(context, filepath):
+def import_mgn( context, 
+                filepath, 
+                *,      
+                global_matrix=None):
 
     #import_mgn_old(context, filepath)
 
@@ -44,12 +47,16 @@ def import_mgn(context, filepath):
 
     mesh_name = filepath.split('\\')[-1].split('.')[0]
     blend_mesh = bpy.data.meshes.new(mesh_name)
+        
+    #print(f"Global Matrix: {str(global_matrix)}")
+    # blend_mesh.transform(global_matrix)
+    # blend_mesh.update()
 
     scene_object = bpy.data.objects.new(mesh_name, blend_mesh)
     context.collection.objects.link(scene_object)
 
-    scene_object.rotation_mode = 'XYZ'
-    scene_object.rotation_euler = (1.57, 0, 0)
+    # scene_object.rotation_mode = 'XYZ'
+    # scene_object.rotation_euler = (1.57, 0, 0)
 
     faces_by_material=[]
 
@@ -90,9 +97,13 @@ def import_mgn(context, filepath):
     # print(f'Faces by material: {str(len(faces_by_material))}')
     # for i, faces in enumerate(faces_by_material):
     #     print(f'{i}: {str(len(faces))}')
+
+    blender_verts = []
+    for v in mgn.positions:
+        blender_verts.append([v[0],-v[2],v[1]])
     
-    blend_mesh.vertices.add(len(mgn.positions))
-    vertices_flat = [vv for v in mgn.positions for vv in v]    
+    blend_mesh.vertices.add(len(blender_verts))
+    vertices_flat = [vv for v in blender_verts for vv in v]
 
     blend_mesh.vertices.foreach_set("co", vertices_flat) 
     blend_mesh.loops.add(len(tris_flat))
@@ -154,423 +165,8 @@ def import_mgn(context, filepath):
     for i, skel in enumerate(mgn.skeletons):
         scene_object[f'SKTM_{i}'] = skel
 
+    print(f"Occulusions: {str(mgn.occlusions)}")
     for zone in mgn.occlusions:
-        scene_object[zone] = 1
+        scene_object[zone[0]] = zone[2]
 
-
-def import_mgn_old(context, filepath):   
-    mgn_file = mgn_tools.open(filepath)
-
-# Get mgn version
-    print("Get MGN Version")
-    version = mgn_file.get_version()
-    version_chunk = mgn_file['SKMG_0.' + str(version).zfill(4) + '_0']
-
-# Get full Directory list for MGN
-    print("Get Directory List")
-    dirlist = mgn_file.get_dirlst()
-
-# get MGN info
-    print("Get INFO Chunk")
-    info_chunk = version_chunk['INFO_0']
-    info_chunk.load()
-
-# Get Skeleton file
-    print("get Skeleton Chunk")
-    sktm_chunk = version_chunk['SKTM_0']
-    sktm_chunk.load()
-
-# get OZN chunk
-    print("Get OZN Chunk")
-    ozn =[]
-    try:
-        ozn_chunk = version_chunk['OZN _0']
-        ozn_chunk.load()
-        ozntmp = list(ozn_chunk)
-        for xs in ozntmp:
-            xstr = xs
-            #xstr = xstr[2:-1]
-            ozn.append(xstr)
-        ozntmp =[]
-    except KeyError:
-        pass
-        
-# get material count
-    print("Get Material INFO chunk")
-    material_count = info_chunk['material_count']
-    blend_count = info_chunk['blend_count']
-
-    posn = []
-    norm = []
-    uvs = []
-    faces = []
-    face_materials = []
-    mat_face_ord = []
-    mat_face_idx = {}
-
-# Load vert data
-    print("Get PSDT data(PIDX, NIDX, UV, OITL, ITL, and make faces")
-    for material in range(material_count):
-        v_count = len(posn)
-        mat_chunk = version_chunk['PSDT_' + str(material)]
-        mat_chunk['NAME_0'].load()
-        material = mat_chunk['NAME_0'].get()
-
-        pidx, nidx, uv = mat_chunk.get_vertices('PNT')
-        posn += pidx
-        norm += nidx
-        uvs += uv
-
-        try:
-            face_chunk = mat_chunk['PRIM_0.OITL_0']
-            face_chunk.load()
-            new_zones, new_faces = zip(*face_chunk[:])
-            faces += [[i+v_count for i in f] for f in new_faces]
-            face_materials += [material for i in new_faces]
-        except KeyError:
-            face_chunk = mat_chunk['PRIM_0.ITL _0']
-            face_chunk.load()
-            new_faces = face_chunk[:]
-            faces += [[i+v_count for i in f] for f in new_faces]
-            face_materials += [material for i in new_faces]
-
-        ufacemat = material.split('/')[1].split('.')[0]
-        mat_face_ord.append(ufacemat)
-        mat_face_idx[ufacemat] = [[i+v_count for i in f] for f in new_faces]
-
-# Flip UV?
-    print("Flipping UV map on Y axis")
-    x3=[]
-    for x in uvs:
-        x2 = (x[0],1-x[1])
-        x3.append(x2)
-    uvs = x3
-    del x3
-
-# Convert UV's to per-face
-    print("Convert UV's to per-face")
-    pf_uvs = [[uvs[i] for i in f] for f in faces]
-
-# Start pulling XFNM data
-    print("Get XFNM Data")
-    xfnm = []
-    xfnm_chunk = version_chunk['XFNM_0']
-    xfnm_chunk.load()
-    vgn = list(xfnm_chunk)
-    for xs in vgn:
-        xstr = xs
-        #xstr = xstr[2:-1]
-        xfnm.append(xstr)
-        
-# Start building positions.
-    print("Get POSN Data")
-    posn_chunk = version_chunk['POSN_0']
-    posn_chunk.load()
-    positions = posn_chunk[posn]
-    origposn = posn_chunk
-    print(f'POSN. len(posn_chunk._data): {len(posn_chunk._data)}, len(positions): {len(positions)}, len(posn): {len(posn)}')
-    print(f'posn: {str(posn)}')
-    print(f'positions: {str(positions)}')
-    
-# Start building TWDT chunk.
-    print("Get TWDT Data")
-    twdt_chunk = version_chunk['TWDT_0']
-    twdt_chunk.load()
-    vgdata = twdt_chunk[0]
-    vgidx = vgdata[0]
-    vgweight = vgdata[1]
-
-# Start building TWHD chunk.
-    print("Get TWHD Data")
-    twhd_chunk = version_chunk['TWHD_0']
-    twhd_chunk.load()    
-    vwdata = twhd_chunk
-    vwdata = list(vwdata)
-
-# Start pulling DOT3 chunk.
-    print("Get DOT3 Data")
-    for a in dirlist:
-        if 'DOT3_0' in a:
-            dot3_chunk = version_chunk['DOT3_0']
-            dot3_chunk.load()    
-            d3data = dot3_chunk
-            d3data = list(d3data)
-
-# Start Processing BLTS.
-    print("Get BLTS Data")
-    bltposndata = []
-    bltidx = []
-    bltchunkidx = []
-
-# get BLT id's for looping through sets.
-    for a in dirlist:       
-        terms=a.split('.')    
-        #print('Dirlist: ', str(a), ' Count: ', len(terms))
-        if (len(terms) >= 4) and terms[3].startswith('BLT '):
-            if len(terms) == 4:
-                bltidx.append(terms[3])
-            elif len(terms) == 5:
-                bltchunkidx.append(terms[4])
-                
-    seen = set()
-    bltidx = [x for x in bltidx if x not in seen and not seen.add(x)]
-    bltchunkidx = [x for x in bltchunkidx if x not in seen and not seen.add(x)]
-
-    if blend_count != 0:
-        bltdict = {}
-        blts_chunk = version_chunk['BLTS_0']
-        for i in bltidx:
-            bltgrp_chunk = blts_chunk[i]
-            
-# get BLT INFO data for each blt section.
-            bltinfo_chunk = bltgrp_chunk[bltchunkidx[0]]
-            bltinfo_chunk.load()
-            bltinfoname = bltinfo_chunk['name']
-            bltdict[i+bltchunkidx[0]] = bltinfoname
-            
-# Get BLT POSN data for each blt section.
-            bltposn_chunk = bltgrp_chunk[bltchunkidx[1]]
-            bltposn_chunk.load()
-            for z in bltposn_chunk:
-                bltposndata.append(z)
-            bltdict[i+bltchunkidx[1]] = bltposndata
-            bltposndata = []
-
-    mesh_name = filepath.split('\\')[-1].split('.')[0]
-    blend_mesh = bpy.data.meshes.new(mesh_name)
-    blend_mesh.vertices.add(len(positions))
-    vertices_flat = [vv for v in positions for vv in v]
-    blend_mesh.vertices.foreach_set("co", vertices_flat)
-
-    print(f"blend_mesh positions: {len(positions)} verts: {len(blend_mesh.vertices)}")
-    print(f"old : {str(vertices_flat)}")
-
-# add Materials
-    print("Add Materials to Blender")
-    for material in bpy.data.materials:
-        material.user_clear()
-        bpy.data.materials.remove(material)
-    materials = [bpy.data.materials.new(name) for name in sorted(mat_face_ord)]
-    for material in materials:
-        blend_mesh.materials.append(material)
-    material_map = dict(zip(set(face_materials), range(len(materials))))
-
-# Make Normals
-    print("Get Norm Data and load to Blender")
-    norm_chunk = version_chunk['NORM_0']
-    norm_chunk.load()
-    normals = norm_chunk[norm]
-    
-    # for v in range(len(posn)):
-    #     blend_mesh.vertices[v].normal = normals[v]
-
-# Make UVS.
-    print("Make UV's")
-    # blend_mesh.tessfaces.add(len(faces)) 
-    # blend_mesh.tessfaces.foreach_set("vertices_raw", unpack_face_list(faces))
-    zipped = sum(faces, [])
-    print(f'His : ({len(zipped)}), {str(zipped)}')
-    blend_mesh.loops.add(len(zipped))
-    blend_mesh.loops.foreach_set("vertex_index", zipped)
-    blend_mesh.polygons.add(len(faces))
-
-    loop_start = []
-    loop_total = []
-    for i in range(0, len(faces)):
-        loop_start.append(3*i)
-        loop_total.append(3)
-    
-    blend_mesh.polygons.foreach_set("loop_start", loop_start)
-    blend_mesh.polygons.foreach_set("loop_total", loop_total)
-    # uv_tex = blend_mesh.tessface_uv_textures.new(name="officialUV")
-        
-    # for i, face in enumerate(faces):
-    #     tface = uv_tex.data[i]
-    #     tface.uv1 = pf_uvs[i][0]
-    #     tface.uv2 = pf_uvs[i][1]
-    #     tface.uv3 = pf_uvs[i][2]
-    #me = blend_mesh.data
-    uvlayer = blend_mesh.uv_layers.new() # default naem and do_init
-
-    blend_mesh.uv_layers.active = uvlayer
-
-    for face in blend_mesh.polygons:
-        for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
-            #uvlayer.data[loop_idx].uv = pf_uvs[loop_idx] # ie UV coord for each face with vert  me.vertices[vert_idx]
-            #print(f'Face: {str(face)}, vert_idx: {vert_idx}, loop_idx: {loop_idx}')
-            uvlayer.data[loop_idx].uv = uvs[vert_idx]
-
-# Validate, update and calc normals
-    print("Validate Mesh data")
-    blend_mesh.validate()
-    blend_mesh.update(calc_edges=True) 
-    blend_mesh.calc_normals() 
-
-    
-
-    print(f"blend_mesh verts2: {len(blend_mesh.vertices)}")
-    
-
-# Write object to scene
-    print("Write mesh to scene.")
-    scene_object = bpy.data.objects.new(mesh_name, blend_mesh)
-    #bpy.context.scene.objects.link(scene_object)
-    #bpy.context.scene.update()
-    context.collection.objects.link(scene_object)
-
-# Declare some new vars.
-    obj = bpy.data.objects[mesh_name]
-    #bpy.context.scene.objects.active = obj
-    #bobj = bpy.context.active_object
-    bobj = scene_object
-
-# change material for each polygon to proper material id
-    print("changing material assignments", len(blend_mesh.polygons))
-    for flist in blend_mesh.polygons:
-        for mx, mat in enumerate(sorted(mat_face_ord)):
-            for fac in mat_face_idx[mat]:
-                if Vector(fac) == Vector(flist.vertices[:]):
-                    flist.select = True
-                    flist.material_index = mx
-                    flist.select = False
-
-# add custom property for skeleton
-    # for cp in sktm_chunk:
-    #     if len(cp) >= 4:
-    #         obj['SKTM'] = cp[2:-1].split('/')[2].split('.')[0]
-    skel = ''
-    for cp in sktm_chunk:
-        print("Skt: ", cp)
-        skel = cp + ':' + skel
-    print("Final SKTM : ", skel)
-    scene_object['SKTM'] = skel
-
-# Add custom properties for OZN
-    for cp in ozn:
-        scene_object[cp] = 1
-
-# Removing Duplicate vertices.
-    print("Removing duplicate vertices ...")
-    # original_area = bpy.context.area.type
-    # bpy.ops.object.editmode_toggle()
-    # bpy.ops.mesh.select_all(action='SELECT')
-    # bpy.ops.mesh.remove_doubles()
-    # bpy.context.area.type = original_area
-    # bpy.ops.object.editmode_toggle()
-    
-    t = bmesh.new()
-    t.from_mesh(blend_mesh)
-    print(f'Result of removing doubles: {bmesh.ops.remove_doubles(t)}')
-    t.to_mesh(blend_mesh)
-    t.free()
-
-# Create Vertex groups with weight of 1 (doesn't assign vertexes correctly but adds groups)    
-# Create dictionary for TWDT vertice indices and values.
-    print("Build TWDT dictionary")
-    w1 = 0
-    k = 0
-    twdtx = []
-    twdtb = []
-    twdtxref = {}
-    for i, w in zip(vgidx, vgweight):
-        w1 += round(w,4)
-        twdtx.append(w)
-        twdtb.append(i)
-        if w1 >= .99 and w1 <= 1.1:
-            twdtxref[k] = twdtx, twdtb
-            w1 = 0
-            k += 1
-            twdtx = []
-            twdtb = []
-
-# Createx the vxref for original position index to PIDX vertex index.
-    print("build POSN/PIDX cross reference by comparing Vector locations")
-    vxref = {}    
-    for i, verts in enumerate(bobj.data.vertices):
-        for k, vert2 in enumerate(origposn):
-            if Vector(list(origposn[k])) == Vector(list(bobj.data.vertices[i].co)):
-                vxref[i] = k
-                
-# Create vertex groups and add weights from twdtxref{} dictionary.
-    print("create vertex groups and weights using TWDT data")
-    tmpidx = []
-    tmpwgt = []
-    uvgr = list(set(vgidx))
-    for au in uvgr[:]:
-        vg = bobj.vertex_groups.new(name=xfnm[au])
-        for pos in twdtxref.keys():
-            for xi, bone in enumerate(twdtxref[pos][1]):
-                if bone == au:
-                    if pos in vxref.values():
-                        tmpidx.append(list(vxref.keys())[list(vxref.values()).index(pos)])
-                        tmpwgt.append(twdtxref[pos][0][xi])
-                        vg.add(tmpidx, twdtxref[pos][0][xi],"ADD")
-                        tmpidx = []
-                        tmpwgt = []
-
- #lets add shape key blends:
-    if blend_count !=0:
-        print("Add shape keys")
-        #bpy.ops.object.shape_key_add(from_mix=False)
-        #shape_key=obj
-        bltvertsidx = []
-        bltvertsdata = []
-        for x in bltdict.keys():
-            if 'INFO' in x:
-                kn = bltdict[x]
-                sk = obj.shape_key_add(name=kn)
-                bm = bmesh.new()
-                bm.from_mesh(obj.data)
-                sl = bm.verts.layers.shape.get(kn)
-          
-                vertices = [e for e in bm.verts]
-                p = x.replace('INFO','POSN')
-                bltverts = bltdict[p]
-                for h in bltverts:
-                    bltvertsidx.append(h[0])
-                    bltvertsdata.append(h[1:4])
-                for vert in vertices:
-                    try:
-                        xx = bltvertsidx.index(vxref[vert.index])     
-                    except ValueError:
-                        xx = 99999
-                    if xx != 99999:
-                        vert[sl] = vert.co + Vector(bltvertsdata[xx])
-                bm.to_mesh(obj.data)
-            bltvertsidx =[]
-            bltvertsdata=[]
-
-    bobj.rotation_mode = 'XYZ'
-    bobj.rotation_euler = (1.57, 0, 0)
-    #bpy.ops.object.select_all(action='SELECT')
-    
-
-class IMPORT_OT_galaxies_mgn(bpy.types.Operator, ImportHelper):
-    '''Import MGN object'''
-    bl_idname='import_mesh.mgn'
-    bl_label='Import MGN'
-    bl_description = 'Import a SWG Animated Mesh.'
-    bl_options = {'PRESET', 'UNDO'}
-    #filepath = StringProperty(name="File Path", description="File path used for importing the MGN file", maxlen=1024, default="", subtype='FILE_PATH')
-    filter_glob: StringProperty(
-                default="*.mgn",
-                options={'HIDDEN'},
-        )
-    filename_ext = ".mgn"
-    def execute(self, context):
-
-        keywords = self.as_keywords(ignore=("filter_glob",))        
-
-        imported = import_mgn(context, **keywords)
-
-        if imported:
-            return {'FINISHED'}
-        else:
-            return {'CANCELLED'}
-
-    # def invoke(self, context, event):
-    #     wm = context.window_manager
-    #     wm.fileselect_add(self)
-    #     return {'RUNNING_MODAL'}
-    def draw(self, context):
-        pass
+    return {'FINISHED'}

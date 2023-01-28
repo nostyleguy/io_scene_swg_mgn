@@ -565,8 +565,6 @@ class SWGMgn(object):
         return self.__str__()
 
     def normalize_vertex_weights(self, weights):
-        print(f'Weights at start: {str(weights)}')
-
         for i , posn in enumerate(weights):
             total = 0
             for weight in posn:
@@ -659,8 +657,8 @@ class SWGMgn(object):
                 these_weights.append(twdt)
                 i += 1
             
-            if sum != 1.0:
-                print(f' *** WARN ***: Vertex Weight sum for vert: {p} != 1.0 : {sum}')
+            # if sum != 1.0:
+            #     print(f' *** WARN ***: Vertex Weight sum for vert: {p} != 1.0 : {sum}')
             self.vertex_weights[p] = these_weights
         
         self.normalize_vertex_weights(self.vertex_weights)
@@ -725,8 +723,10 @@ class SWGMgn(object):
 
         if iff.getCurrentName() == "OZN ":
             iff.enterChunk("OZN ")
+            i = 0
             while not iff.atEndOfForm():
-                self.occlusions.append(iff.read_string())
+                self.occlusions.append([iff.read_string(), i, 1])
+                i += 1
             iff.exitChunk("OZN ")
 
         if iff.getCurrentName() == "FOZC":
@@ -739,6 +739,15 @@ class SWGMgn(object):
 
         if iff.getCurrentName() == "ZTO ":
             iff.enterChunk("ZTO ")
+            for occ in self.occlusions:
+                occ[2] = 0
+            while not iff.atEndOfForm():
+                index = iff.read_int16()
+                print(f"Found ZTO: {index}")
+                for occ in self.occlusions:
+                    if occ[1] == index:
+                        occ[2] = 1
+                        print(f"Occ: {str(occ)} is ZTO: {index} Setting occluded to: {occ[2]}")
             iff.exitChunk("ZTO ")
 
         while not iff.atEndOfForm():
@@ -750,16 +759,11 @@ class SWGMgn(object):
                 psdt.name = iff.read_string()
                 iff.exitChunk("NAME")
 
-                already_seen=set()
                 iff.enterChunk("PIDX")
                 num = iff.read_uint32()
                 while not iff.atEndOfForm():
                     i = iff.read_uint32()
                     psdt.pidx.append(i)
-                    if i in already_seen:
-                        print(f"PSDT Already seen position index: {i}")
-                    else:
-                        already_seen.add(i)
 
                 iff.exitChunk("PIDX")
 
@@ -811,7 +815,6 @@ class SWGMgn(object):
                 iff.exitChunk("INFO")
                 while not iff.atEndOfForm():
                     prim_type = iff.getCurrentName()
-                    print(f'PRIM type: {prim_type}')
                     iff.enterChunk(prim_type)
 
                     triangle_list = []
@@ -847,6 +850,12 @@ class SWGMgn(object):
                 iff.exitForm()
         print(self)
 
+    def get_zones_this_occludes(self):
+        i = 0
+        for zone in self.occlusions:
+            if zone[2] == 1:
+                i += 1
+        return i
 
     def write(self):
         iff = nsg_iff.IFF(initial_size=10000)
@@ -867,7 +876,7 @@ class SWGMgn(object):
         
         iff.insert_uint16(len(self.occlusions))
         iff.insert_uint16(self.num_occ_combo_zones)
-        iff.insert_uint16(len(self.occlusions))
+        iff.insert_uint16(self.get_zones_this_occludes())
         iff.insert_uint16(self.occlusion_layer) 
         iff.exitChunk("INFO")
         
@@ -883,7 +892,7 @@ class SWGMgn(object):
 
         iff.insertChunk("POSN")
         for pos in self.positions:
-            pos[0] = -pos[0]
+            #pos[0] = -pos[0]
             iff.insertFloatVector3(pos)
         iff.exitChunk("POSN")
 
@@ -966,14 +975,12 @@ class SWGMgn(object):
                     iff.insertFloatVector3(n[1])
                 iff.exitChunk("NORM")
 
-        #         if iff.getCurrentName() == "DOT3":
-        #             iff.enterChunk("DOT3")     
-        #             num_dot3 = iff.read_int32()
-        #             blt.dot3 = []
-        #             #for i in range(0, num_dot3):
-        #             while not iff.atEndOfForm():
-        #                 blt.dot3.append([(iff.read_int32(), (iff.read_float(), iff.read_float(), iff.read_float()))])
-        #             iff.exitChunk("DOT3")
+                iff.insertChunk("DOT3")
+                iff.insert_uint32(len(blend.dot3))
+                for n in blend.dot3:
+                    iff.insert_uint32(n[0])
+                    iff.insertFloatVector3(n[1])
+                iff.exitChunk("DOT3")
 
                 iff.exitForm("BLT ")
             iff.exitForm("BLTS")
@@ -981,7 +988,7 @@ class SWGMgn(object):
         if len(self.occlusions) > 0:
             iff.insertChunk("OZN ")
             for occ in self.occlusions:
-                iff.insertChunkString(occ)
+                iff.insertChunkString(occ[0])
             iff.exitChunk("OZN ")
 
         # if iff.getCurrentName() == "FOZC":
@@ -994,8 +1001,11 @@ class SWGMgn(object):
 
         if len(self.occlusions) > 0:
             iff.insertChunk("ZTO ")
-            for id, occ in enumerate(self.occlusions):
-                iff.insert_int16(id)
+            # for id, occ in enumerate(self.occlusions):
+            #     iff.insert_int16(id)
+            for occ in self.occlusions:
+                if occ[2] == 1:
+                    iff.insert_int16(occ[1])
             iff.exitChunk("ZTO ")
 
         for psdt in self.psdts:
@@ -1052,100 +1062,4 @@ class SWGMgn(object):
             
             iff.exitForm("PSDT")
 
-        # while not iff.atEndOfForm():
-        #     if iff.getCurrentName() == "PSDT":
-        #         psdt = SWGPerShaderData()
-        #         iff.enterForm("PSDT")
-
-        #         iff.enterChunk("NAME")
-        #         psdt.name = iff.read_string()
-        #         iff.exitChunk("NAME")
-
-        #         iff.enterChunk("PIDX")
-        #         num = iff.read_uint32()
-        #         while not iff.atEndOfForm():
-        #             psdt.pidx.append(iff.read_uint32())
-        #         iff.exitChunk("PIDX")
-
-        #         iff.enterChunk("NIDX")
-        #         while not iff.atEndOfForm():
-        #             psdt.nidx.append(iff.read_uint32())
-        #         iff.exitChunk("NIDX")
-
-        #         if iff.getCurrentName() == "DOT3":
-        #             psdt.dot3 = []
-        #             iff.enterChunk("DOT3")
-        #             while not iff.atEndOfForm():
-        #                 psdt.dot3.append(iff.read_uint32())
-        #             iff.exitChunk("DOT3")
-
-        #         if iff.getCurrentName() == "VDCL":
-        #             psdt.colors = []
-        #             iff.enterChunk("VDCL")
-        #             while not iff.atEndOfForm():
-        #                 psdt.colors.append([iff.read_byte(), iff.read_byte(), iff.read_byte(), iff.read_byte()])
-        #             iff.exitChunk("VDCL")
-
-        #         iff.enterChunk("TXCI")
-        #         psdt.num_uvs = iff.read_uint32()
-        #         while not iff.atEndOfForm():
-        #             psdt.uv_dimensions.append(iff.read_uint32())
-        #         iff.exitChunk("TXCI")
-
-        #         iff.enterForm("TCSF")
-        #         i = 0
-        #         while not iff.atEndOfForm(): 
-        #             dim = psdt.uv_dimensions[i]
-        #             num = iff.getCurrentLength() // 4 // dim             
-        #             psdt.uvs.append([None] * num)                 
-        #             iff.enterChunk("TCSD")
-        #             for n in range(0, num):
-        #                 uv = []
-        #                 for m in range(0, dim):
-        #                     uv.append(iff.read_float())
-        #                 psdt.uvs[i][n] = uv
-        #             iff.exitChunk("TCSD")                    
-        #             i += 1
-        #         iff.exitForm("TCSF")
-
-        #         iff.enterForm("PRIM")
-        #         iff.enterChunk("INFO")
-        #         psdt.num_prims = iff.read_uint32()
-        #         iff.exitChunk("INFO")
-        #         while not iff.atEndOfForm():
-        #             prim_type = iff.getCurrentName()
-        #             print(f'PRIM type: {prim_type}')
-        #             iff.enterChunk(prim_type)
-
-        #             triangle_list = []
-        #             if prim_type == "OITL":
-        #                 num_tris = iff.read_uint32()
-        #                 #for n in range(0, num_tris):
-        #                 while not iff.atEndOfForm():
-        #                     occ = iff.read_int16()
-        #                     p1 = iff.read_int32()
-        #                     p2 = iff.read_int32()
-        #                     p3 = iff.read_int32()
-        #                     tri = Triangle(p1, p2, p3)
-        #                     triangle_list.append(tri)
-        #                 psdt.prims.append(triangle_list)
-        #             elif prim_type == "ITL ":
-        #                 num_tris = iff.read_uint32()
-        #                 for n in range(0, num_tris):
-        #                     p1 = iff.read_int32()
-        #                     p2 = iff.read_int32()
-        #                     p3 = iff.read_int32()
-        #                     tri = Triangle(p1, p2, p3)
-        #                     triangle_list.append(tri)
-        #                 psdt.prims.append(triangle_list)
-        #             else:
-        #                 print(f'Unhandled PRIM type: {prim_type}')
-        #             iff.exitChunk(prim_type)
-
-        #         iff.exitForm("PRIM")
-        #         self.psdts.append(psdt)
-        #         iff.exitForm("PSDT")
-        #     else:
-        #         print(f'Unexpected form: {iff.getCurrentName()}')
-        #         iff.exitForm()
         iff.write(self.filename)
