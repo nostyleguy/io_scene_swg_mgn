@@ -169,4 +169,6 @@ def import_mgn( context,
     for zone in mgn.occlusions:
         scene_object[zone[0]] = zone[2]
 
+    scene_object[f'OCC_LAYER'] = mgn.occlusion_layer
+
     return {'FINISHED'}

@@ -83,6 +83,8 @@ def export_mgn(context,
     for key in current_obj.keys():
         if key.startswith("SKTM_"):
             mgn.skeletons.append(current_obj[key])
+        elif key == "OCC_LAYER":
+            mgn.occlusion_layer = current_obj[key]
         else:
             mgn.occlusions.append([key, i, current_obj[key]])
             i += 1
