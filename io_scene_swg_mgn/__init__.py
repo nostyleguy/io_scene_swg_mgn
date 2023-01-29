@@ -23,7 +23,7 @@
 bl_info = {
     'name': "SWG Animated Mesh (.mgn)",
     "author": "Nick Rafalski (bug fixes and Blender 3+ support)",
-    "version": (1, 0, 3),
+    "version": (1, 0, 4),
     "blender": (2, 81, 6),
     "location":"File > Import-Export",
     "description": "Import and Export SWG animated meshes(.mgn)",
@@ -87,7 +87,6 @@ class MGN_PT_import_option(bpy.types.Panel):
         operator = sfile.active_operator
 
 
-@orientation_helper(axis_forward='Z', axis_up='Z')
 class ImportMGN(bpy.types.Operator, ImportHelper):
     """Load a SWG MGN File"""
     bl_idname = "import_scene.mgn"
@@ -102,20 +101,7 @@ class ImportMGN(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):      
 
-        keywords = self.as_keywords(ignore=("axis_forward",
-                                            "axis_up",
-                                            "filter_glob",
-                                            ))
-
-        global_matrix = axis_conversion(from_forward=self.axis_forward,
-                                        from_up=self.axis_up,
-                                        ).to_4x4()
-        keywords["global_matrix"] = global_matrix
-
-        # if bpy.data.is_saved and context.preferences.filepaths.use_relative_paths:
-        #     import os
-        #     keywords["relpath"] = os.path.dirname(bpy.data.filepath)
-
+        keywords = self.as_keywords(ignore=("filter_glob",))
         result = mgnimport.import_mgn(context, **keywords)
         if 'ERROR' in result:
             self.report({'ERROR'}, 'Something went wrong importing MGN')
@@ -126,7 +112,6 @@ class ImportMGN(bpy.types.Operator, ImportHelper):
     def draw(self, context):
         pass
 
-@orientation_helper(axis_forward='Z', axis_up='Y')
 class ExportMGN(bpy.types.Operator, ExportHelper):
     '''Export MGN object'''
     bl_idname='export_scene.mgn'
@@ -141,33 +126,13 @@ class ExportMGN(bpy.types.Operator, ExportHelper):
             options={'HIDDEN'},
             )
 
-    #filepath = StringProperty(name="File Path", description="File path used for exporting the MGN file", maxlen=1024, default="", subtype='FILE_PATH')
-    #tangents : BoolProperty(name='Calculate Tangents', description="Calculate tangent vectors.", default=True)
-    option_skeleton : StringProperty(name='Skeleton File', description="Skeleton file this mesh references. Debug option", maxlen=1024, default='all_b')
-    occlusion : BoolProperty(name='Include OZN & ZTO?', description="Add OZN & ZTO chunks?", default=True)
-    oitldata : BoolProperty(name='Use OITL?', description="Select to use OITL instead of ITL", default=False)
-    overwriteWarning : BoolProperty(name="Overwrite Existing File", default=True)
-    global_scale: FloatProperty(
-            name="Scale",
-            min=0.01, max=1000.0,
-            default=1.0,
-            )
+    do_tangents : BoolProperty(name='DOT3', description="Include DOT3 tangent vectors.", default=True)
 
     def execute(self, context):
-        from . import swg_types
-        from . import nsg_iff
         from . import mgnexport
-        from mathutils import Matrix
-        keywords = self.as_keywords(ignore=("axis_forward",
-                                            "axis_up",
-                                            "global_scale",
-                                            "filter_glob",))
-        global_matrix = (Matrix.Scale(self.global_scale, 4) @
-                         axis_conversion(to_forward=self.axis_forward,
-                                         to_up=self.axis_up,
-                                         ).to_4x4())
 
-        keywords["global_matrix"] = global_matrix
+        keywords = self.as_keywords(ignore=("check_existing","filter_glob"))
+        print(f"Keyword args: {str(keywords)}")
         result = mgnexport.export_mgn(context, **keywords)
         if 'ERROR' in result:
                 self.report({'ERROR'}, 'Something went wrong exporting MGN')
@@ -184,31 +149,20 @@ class MGN_PT_export_option(bpy.types.Panel):
     bl_label = "Options"
     bl_parent_id = "FILE_PT_operator"
 
-    @classmethod
-
-    
+    @classmethod    
     def poll(cls, context):
         sfile = context.space_data
         operator = sfile.active_operator
-
         return operator.bl_idname == "EXPORT_SCENE_OT_mgn"
 
     def draw(self, context):
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False  # No animation.
-
         sfile = context.space_data
         operator = sfile.active_operator
+        layout.prop(operator, 'do_tangents')
 
-        #layout.prop(operator, 'tangents')
-        layout.prop(operator, 'option_skeleton')
-        layout.prop(operator, 'occlusion')
-        layout.prop(operator, 'oitldata')
-        layout.prop(operator, 'overwriteWarning')
-
-
-## function calls
 def mgn_import(self, context):
     self.layout.operator(ImportMGN.bl_idname, text="SWG Animated Mesh (.mgn)")
 
@@ -216,12 +170,12 @@ def mgn_export(self, context):
     self.layout.operator(ExportMGN.bl_idname, text="SWG Animated Mesh (.mgn)")
 
 
-classes = {
+classes = (
     ImportMGN,
     MGN_PT_export_option,
     ExportMGN,    
     MGN_PT_import_option,
-}
+)
 
 def register():
     for cls in classes:
@@ -231,11 +185,13 @@ def register():
     bpy.types.TOPBAR_MT_file_export.append(mgn_export)
 
 def unregister():
+
     bpy.types.TOPBAR_MT_file_import.remove(mgn_import)
     bpy.types.TOPBAR_MT_file_export.remove(mgn_export)
 
-    for cls in classes:
+    for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
 if __name__ == "__main__":
+    unregister()
     register()

@@ -896,13 +896,6 @@ class SWGMgn(object):
             iff.insertFloatVector3(pos)
         iff.exitChunk("POSN")
 
-        # self.twhd = [0] * self.num_positions
-        # i = 0
-        # iff.enterChunk("TWHD")        
-        # while not iff.atEndOfForm():
-        #     self.twhd[i] = iff.read_uint32()
-        #     i += 1
-        # iff.exitChunk("TWHD")
         iff.insertChunk("TWHD")
         for twdt in self.twdt:
             iff.insert_uint32(len(twdt))
@@ -915,37 +908,17 @@ class SWGMgn(object):
                 iff.insertFloat(weight[1])
         iff.exitChunk("TWDT")
 
-
-        # iff.enterChunk("TWDT")     
-        # self.twdt = [[0,0.0]] * self.num_transform_weight_data   
-        # i = 0
-        # while not iff.atEndOfForm():
-        #     self.twdt[i] = [iff.read_uint32(), iff.read_float()]
-        #     #print(f'Twdt: {i} ({str(self.twdt[i])})')
-        #     i += 1
-        # iff.exitChunk("TWDT")
-
         iff.insertChunk("NORM")
         for norm in self.normals:
             iff.insertFloatVector3(norm)
-        iff.exitChunk("NORM")        
+        iff.exitChunk("NORM") 
 
-        # if iff.getCurrentName() == "DOT3":
-        #     iff.enterChunk("DOT3")     
-        #     num_dot3 = iff.read_uint32()
-        #     self.dot3 = [None] * num_dot3   
-        #     i = 0
-        #     while not iff.atEndOfForm():
-        #         self.dot3[i] = [iff.read_float(), iff.read_float(), iff.read_float(), iff.read_float()]
-        #         i += 1
-        #     iff.exitChunk("DOT3")
-
-        #if do dot3 ...
-        iff.insertChunk("DOT3")
-        iff.insert_uint32(len(self.dot3))
-        for dot3 in self.dot3:
-            iff.insertFloatVector4(dot3)
-        iff.exitChunk("DOT3")
+        if self.dot3:
+            iff.insertChunk("DOT3")
+            iff.insert_uint32(len(self.dot3))
+            for dot3 in self.dot3:
+                iff.insertFloatVector4(dot3)
+            iff.exitChunk("DOT3")
 
 
         # if iff.getCurrentName() == "HPTS":
@@ -975,12 +948,13 @@ class SWGMgn(object):
                     iff.insertFloatVector3(n[1])
                 iff.exitChunk("NORM")
 
-                iff.insertChunk("DOT3")
-                iff.insert_uint32(len(blend.dot3))
-                for n in blend.dot3:
-                    iff.insert_uint32(n[0])
-                    iff.insertFloatVector3(n[1])
-                iff.exitChunk("DOT3")
+                if blend.dot3:
+                    iff.insertChunk("DOT3")
+                    iff.insert_uint32(len(blend.dot3))
+                    for n in blend.dot3:
+                        iff.insert_uint32(n[0])
+                        iff.insertFloatVector3(n[1])
+                    iff.exitChunk("DOT3")
 
                 iff.exitForm("BLT ")
             iff.exitForm("BLTS")
@@ -1001,8 +975,6 @@ class SWGMgn(object):
 
         if len(self.occlusions) > 0:
             iff.insertChunk("ZTO ")
-            # for id, occ in enumerate(self.occlusions):
-            #     iff.insert_int16(id)
             for occ in self.occlusions:
                 if occ[2] == 1:
                     iff.insert_int16(occ[1])
@@ -1025,10 +997,11 @@ class SWGMgn(object):
                 iff.insert_uint32(nidx)
             iff.exitChunk("NIDX")
 
-            iff.insertChunk("DOT3")
-            for dot3 in psdt.dot3:
-                iff.insert_uint32(dot3)
-            iff.exitChunk("DOT3")
+            if psdt.dot3:
+                iff.insertChunk("DOT3")
+                for dot3 in psdt.dot3:
+                    iff.insert_uint32(dot3)
+                iff.exitChunk("DOT3")
 
             if len(psdt.uvs) > 0:
                 iff.insertChunk("TXCI")

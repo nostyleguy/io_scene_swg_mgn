@@ -41,12 +41,7 @@ def mesh_triangulate(me):
 def export_mgn(context, 
                filepath, 
                *,
-               option_skeleton = "appearance/skeleton/all_b.skt",
-               occlusion = False,
-               oitldata = False,
-               global_matrix=None,
-               overwriteWarning = False,
-               check_existing = False):    
+               do_tangents = True):    
     t = time.time()
 
     current_obj = None
@@ -70,15 +65,17 @@ def export_mgn(context,
     #bm.transform(global_matrix @ ob_mat)
     mesh_triangulate(bm)
 
-    tang_lib = []
-    bm.calc_tangents()
     bm.calc_normals()
-    for i, loop in enumerate(bm.loops):
-        a = loop.tangent[:]
-        b = list(a)
-        b.insert(3, 1.0)
-        b = tuple(b)
-        tang_lib.append(b[:])
+    
+    tang_lib = []
+    if do_tangents:
+        bm.calc_tangents()
+        for i, loop in enumerate(bm.loops):
+            a = loop.tangent[:]
+            b = list(a)
+            b.insert(3, 1.0)
+            b = tuple(b)
+            tang_lib.append(b[:])
 
     mgn = swg_types.SWGMgn(filepath)
 
@@ -94,9 +91,10 @@ def export_mgn(context,
         mgn.positions.append([vert.co[0],vert.co[2],vert.co[1]])
         mgn.normals.append([-vert.normal[0],-vert.normal[2],-vert.normal[1]])
 
-    mgn.dot3=[]
-    for tang in tang_lib:
-        mgn.dot3.append([tang[0], tang[2], tang[1], tang[3]])
+    if do_tangents:
+        mgn.dot3=[]
+        for tang in tang_lib:
+            mgn.dot3.append([tang[0], tang[2], tang[1], tang[3]])
 
     twhd = []
     twdt = []
@@ -113,15 +111,12 @@ def export_mgn(context,
                     if delta[0] != 0 and delta[1] != 0 and delta[2] != 0:
                         blt.positions.append([j, delta[:]])
                         blt.normals.append([j, [0,0,0]])
-                        blt.dot3.append([j, [0,0,0]])
-                    
-                    # norm = kv.normal - basis[j].normal
+
+                        if do_tangents:
+                            blt.dot3.append([j, [0,0,0]])
                 mgn.blends.append(blt)
             
-    me_verts = bm.vertices[:]
-    loops = bm.loops
     face_index_pairs = [(face, index) for index, face in enumerate(bm.polygons)]
-
     faces_by_material = {}
     for f, f_index in face_index_pairs:
         if not f.material_index in faces_by_material:
@@ -172,16 +167,9 @@ def export_mgn(context,
                 psdt.pidx.append(master_vert_id)
                 psdt.nidx.append(master_vert_id)
                 psdt.uvs[0].append(uv_layer[l_index].uv)
-                psdt.dot3.append(l_index)
-                    # for i, layer in enumerate(bm.uv_layers):
-                    #     uv = layer.data[l_index].uv
-                    #     psdt.uvs[i].append(uv)
-                    
-                #uv = uv_layer[l_index].uv     
-                #final_uv = (uv_layer[l_index].uv[0], 1-(uv_layer[l_index].uv[1]))           
-                #print(f' loop_index: {l_index}, uv_index: {uv_index}, vert_index: {f.vertices[uv_index]} vert: {bm.vertices[f.vertices[uv_index]]}')    
-                #uv_dict[l_index] = f.vertices[uv_index], final_uv, f.material_index, l_index, (tuple(v for v in f.vertices))
-                #all_positions.add((f.vertices[uv_index], uv_index))
+
+                if do_tangents:
+                    psdt.dot3.append(l_index)
                 
                 if last_tri_index == None:
                     last_tri_index = l_index
@@ -206,7 +194,6 @@ def export_mgn(context,
                     #print(f"Wrote tri {t1} {t2} {t3}")
 
                 running_tri_index += 1
-                #psdt.prims[0].append(reverse_position_lookup[master_vert_id])
 
     vertex_groups = current_obj.vertex_groups
     bone_names = vertex_groups.keys()
@@ -223,7 +210,7 @@ def export_mgn(context,
                     twdtdata[v.index].append([indexval, n.weight])
     od = collections.OrderedDict(sorted(twdtdata.items()))
     mgn.twdt = list(od.values())
-    
+
     print(f"Assembling final IFF ... ")
     mgn.write()
     now = time.time()        
