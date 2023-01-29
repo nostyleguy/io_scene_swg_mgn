@@ -8,8 +8,9 @@ Should work with Blender 3+
   * Bone names are Imported as vertex groups.
   * Vertex weights are imported and assigned relative to the vertex groups they belong to.
   * Blends are imported as shape keys.
-  * Occlusions are imported as custom properties. The name of the occlusion zone is the name of the custom property.
+  * Occlusion layer (2 for most wearables) is stored in the custom property, "OCC_LAYER"
   * Skeleton name(s) are imported as a custom properties. The name of the property will be of the form SKTM_n where n is an integer. This allows multiple skeletons to be affected. The value of the property is the path to the skeleton, including the directory, e.g. "appearance/skeleton/all_b.skt".
+  * Occlusions are imported as custom properties. The name of the occlusion zone is the name of the custom property. Any custom proprety whose value isn't OCC_LAYER or starts with "STKM_" will be treated like an occlusion zone.
   * Shader name is imported as a material, in cases where there are multiple shaders, each shader is added as a new material.  Also,  each polygon in the mesh is properly assigned to each material.  However, each created material while having the proper shader name, will still only be a default blank material, without textures, shading, etc…  You can, however, load any textures associated with the SWG shader into blender, and they will map properly onto the mesh.  But you have to do this manually, the importer will not do this for you. 
   * UVs are imported for each shader, and stored in a single UV file within blender.  Again, the UV’s are assigned properly to each Poly and material that gets created.  This allows you to import any and all textures from the SWG shader files into blender, and they will map properly.   Please be aware that SWG UV’s are written to the MGN files Upside-Down.  Meaning they have to be flipped upright on import for them to work properly in blender.   
 * This plugin will export a single object from blender into the MGN file format for SWG.  Items exported are the mesh, UV, Shader names, Bone names, bone weights, Blends, Occlusions and skeleton name.
