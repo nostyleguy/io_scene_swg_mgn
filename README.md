@@ -30,3 +30,10 @@ Some additional function information.
   * Blends are the basic deformations of the base mesh that define how the object deforms along with the “body shape” sliders within the SWG client.  There are 4 main Blends for most clothing:  flat_chest, Skinny, Fat, and Muscle.  Heads for the various species have many more blends that correspond to the sliders you see at character creation. The base mesh, is also the Basis shape key.  Search google,  research, and learn for yourself how to properly use and save shape keys within blender.
 * DOT3:
   * DOT3 (aka tangents, aka normalmap coords, aka per-pixel lighting coords) are optionally exportable since some shaders don't want them. Controlled by the export option, "DOT3" 
+
+Limitations:
+* No support for hardpoints (either dynamic or static) yet. These are sometimes used for things like earing placeholders on species' heads. I have a plan for this
+* No support for the TRTS (Texture Renderers) form yet. This is necessary to let certain species' body parts have different textured skin, tatoos, etc.
+* No Support for per-triangle occlusions (OITL)
+* No support for the FOZC or OZC occlusion chunks. Most wearables seem fine without these, but it's possible something will goof up without them. 
+* Material management leaves a lot to be desired. If you import multiple models that use the same material, it will create 2 materials, the second with a postfixed number (armor_padded_buckle_as9.001), and this entire name WILL be written as the shader into the PSDT chunk, which isn't what you want. You can manually assign the original material back to the slot, and it will work.  
