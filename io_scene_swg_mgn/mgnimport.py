@@ -153,8 +153,9 @@ def import_mgn( context,
         sk = scene_object.shape_key_add(name=blend.name)
         for vert in blend.positions:
             id = vert[0]
-            delta = Vector(vert[1])
-            sk.data[id].co = scene_object.data.vertices[id].co + delta
+            delta = [vert[1][0], -vert[1][2], vert[1][1]]
+            delta_v = Vector(delta)
+            sk.data[id].co = scene_object.data.vertices[id].co + delta_v
 
 
     print("Validate Mesh data")
