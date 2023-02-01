@@ -99,8 +99,7 @@ class ImportMGN(bpy.types.Operator, ImportHelper):
                 options={'HIDDEN'},
         )
 
-    def execute(self, context):      
-
+    def execute(self, context):
         keywords = self.as_keywords(ignore=("filter_glob",))
         result = mgnimport.import_mgn(context, **keywords)
         if 'ERROR' in result:
@@ -127,6 +126,7 @@ class ExportMGN(bpy.types.Operator, ExportHelper):
             )
 
     do_tangents : BoolProperty(name='DOT3', description="Include DOT3 tangent vectors.", default=True)
+    flip_normal_x : BoolProperty(name='Flip Normal X', description="Negate the X component of normals. Seems to help some models like heads", default=False)
 
     def execute(self, context):
         from . import mgnexport
@@ -162,6 +162,7 @@ class MGN_PT_export_option(bpy.types.Panel):
         sfile = context.space_data
         operator = sfile.active_operator
         layout.prop(operator, 'do_tangents')
+        layout.prop(operator, 'flip_normal_x')
 
 def mgn_import(self, context):
     self.layout.operator(ImportMGN.bl_idname, text="SWG Animated Mesh (.mgn)")

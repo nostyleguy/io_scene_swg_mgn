@@ -22,12 +22,13 @@
 # Option Skeleton:  name of the skeleton file without extention. See Readme.
 # Option OITL:  Export OITL instead of ITL. See Readme.
 # ##############################################################################
-import bpy, mathutils, struct, os, collections
+import bpy, mathutils, struct, os, collections, array
 import time, datetime
 import bmesh
 from bpy.props import *
 from mathutils import Vector
 from . import swg_types, mgn_tools
+from . import data_types
 
 oznfulllist = ['face','neck','skull','sideburn_l','sideburn_r','chest','torso_f','torso_b','waist_f','waist_b','r_thigh','r_shin','r_foot','l_thigh','l_shin','l_foot','r_arm','r_forearm','r_hand','l_arm','l_forearm','l_hand']
         
@@ -41,8 +42,9 @@ def mesh_triangulate(me):
 def export_mgn(context, 
                filepath, 
                *,
-               do_tangents = True):    
-    t = time.time()
+               do_tangents = True,
+               flip_normal_x = False):    
+    starttime = time.time()
 
     current_obj = None
     objects = context.selected_objects
@@ -64,18 +66,39 @@ def export_mgn(context,
     bm = current_obj.to_mesh()    
     #bm.transform(global_matrix @ ob_mat)
     mesh_triangulate(bm)
+    
+    #bm.calc_normals_split()
 
-    bm.calc_normals()
+    t_ln = array.array(data_types.ARRAY_FLOAT64, (0.0,)) * len(bm.loops) * 3
+    bm.loops.foreach_get("normal", t_ln)
+    normals = list(map(list, zip(*[iter(t_ln)]*3)))   
+    print(f"Normals: {str(normals)}")
     
     tang_lib = []
+    tangents=[]
     if do_tangents:
-        bm.calc_tangents()
-        for i, loop in enumerate(bm.loops):
-            a = loop.tangent[:]
-            b = list(a)
-            b.insert(3, 1.0)
-            b = tuple(b)
-            tang_lib.append(b[:])
+        t_ln = array.array(data_types.ARRAY_FLOAT64, [0.0,]) * len(bm.loops) * 3
+        uv_names = [uvlayer.name for uvlayer in bm.uv_layers]
+        for name in uv_names:
+            print(f"Did tangents for UV map: {name}")
+            bm.calc_tangents(uvmap=name)
+        for idx, uvlayer in enumerate(bm.uv_layers):
+            name = uvlayer.name
+            bm.loops.foreach_get("bitangent", t_ln)  
+            tangents = list(map(list, zip(*[iter(t_ln)]*3)))        
+            print(f"Tangents: {str(len(tangents))}")
+
+            bm.loops.foreach_get("tangent", t_ln)
+            print(f"Bitangents: {str(len(t_ln))}")
+        # for i, loop in enumerate(bm.loops):
+        #     a = loop.tangent[:]
+        #     b = list(a)
+        #     b.insert(3, 1.0)
+        #     b = tuple(b)
+        #     tang_lib.append(b[:])
+        for t in tangents:
+            t.insert(3, 1.0)
+            tang_lib.append(t)
 
     mgn = swg_types.SWGMgn(filepath)
 
@@ -90,13 +113,16 @@ def export_mgn(context,
             i += 1
 
     for vert in bm.vertices:
-        mgn.positions.append([vert.co[0],vert.co[2],vert.co[1]])
-        mgn.normals.append([-vert.normal[0],-vert.normal[2],-vert.normal[1]])
+        mgn.positions.append([-vert.co[0],vert.co[2],-vert.co[1]])
+        mgn.normals.append([-vert.normal[0],vert.normal[2],-vert.normal[1]])
+
+    # for normal in normals:
+    #     mgn.normals.append([-normal[0], normal[2], -normal[1]])
 
     if do_tangents:
         mgn.dot3=[]
-        for tang in tang_lib:
-            mgn.dot3.append([tang[0], tang[2], tang[1], tang[3]])
+        for i, tang in enumerate(tang_lib):
+            mgn.dot3.append([-tang[0], tang[2], -tang[1], tang[3]])
 
     twhd = []
     twdt = []
@@ -111,7 +137,7 @@ def export_mgn(context,
                 for j, kv in enumerate(key.data):
                     delta = kv.co - basis[j].co
                     #if delta[0] != 0 and delta[1] != 0 and delta[2] != 0:
-                    blt.positions.append([j, [delta[0], delta[2], delta[1]]])
+                    blt.positions.append([j, [-delta[0], delta[2], -delta[1]]])
                     blt.normals.append([j, [0,0,0]])
                     if do_tangents:
                         blt.dot3.append([j, [0,0,0]])
@@ -167,6 +193,7 @@ def export_mgn(context,
                 #if not master_vert_id in psdt.pidx:
                 psdt.pidx.append(master_vert_id)
                 psdt.nidx.append(master_vert_id)
+                #psdt.nidx.append(l_index)
                 psdt.uvs[0].append(uv_layer[l_index].uv)
 
                 if do_tangents:
@@ -188,9 +215,9 @@ def export_mgn(context,
                     #t3 = reverse_position_lookup[master_vert_id]
                     #t3 = running_tri_index - last_tri_index
                     t3 = running_tri_index
-                    psdt.prims[0].append(t1)
-                    psdt.prims[0].append(t2)
                     psdt.prims[0].append(t3)
+                    psdt.prims[0].append(t2)
+                    psdt.prims[0].append(t1)
                     
                     #print(f"Wrote tri {t1} {t2} {t3}")
 
@@ -215,5 +242,5 @@ def export_mgn(context,
     print(f"Assembling final IFF ... ")
     mgn.write()
     now = time.time()        
-    print(f"Successfully wrote: {filepath} Duration: " + str(datetime.timedelta(seconds=(now-t))))
+    print(f"Successfully wrote: {filepath} Duration: " + str(datetime.timedelta(seconds=(now-starttime))))
     return {'FINISHED'}
