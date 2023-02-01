@@ -42,13 +42,12 @@ def mesh_triangulate(me):
 def export_mgn(context, 
                filepath, 
                *,
-               do_tangents = True,
-               flip_normal_x = False):    
+               do_tangents = True):    
     starttime = time.time()
 
     current_obj = None
     objects = context.selected_objects
-    mat = None
+
     if not (len(objects) == 1):
         return {'ERROR'}
 
@@ -59,20 +58,15 @@ def export_mgn(context,
                 return False
             else:
                 current_obj = ob
-                mat = ob_mat
                 
-    scene = context.scene
-                
-    bm = current_obj.to_mesh()    
-    #bm.transform(global_matrix @ ob_mat)
+    bm = current_obj.to_mesh() 
     mesh_triangulate(bm)
     
-    #bm.calc_normals_split()
+    bm.calc_normals_split()
 
     t_ln = array.array(data_types.ARRAY_FLOAT64, (0.0,)) * len(bm.loops) * 3
     bm.loops.foreach_get("normal", t_ln)
-    normals = list(map(list, zip(*[iter(t_ln)]*3)))   
-    print(f"Normals: {str(normals)}")
+    normals = list(map(list, zip(*[iter(t_ln)]*3)))
     
     tang_lib = []
     tangents=[]
@@ -84,18 +78,9 @@ def export_mgn(context,
             bm.calc_tangents(uvmap=name)
         for idx, uvlayer in enumerate(bm.uv_layers):
             name = uvlayer.name
-            bm.loops.foreach_get("bitangent", t_ln)  
-            tangents = list(map(list, zip(*[iter(t_ln)]*3)))        
-            print(f"Tangents: {str(len(tangents))}")
+            bm.loops.foreach_get("tangent", t_ln)  
+            tangents = list(map(list, zip(*[iter(t_ln)]*3)))
 
-            bm.loops.foreach_get("tangent", t_ln)
-            print(f"Bitangents: {str(len(t_ln))}")
-        # for i, loop in enumerate(bm.loops):
-        #     a = loop.tangent[:]
-        #     b = list(a)
-        #     b.insert(3, 1.0)
-        #     b = tuple(b)
-        #     tang_lib.append(b[:])
         for t in tangents:
             t.insert(3, 1.0)
             tang_lib.append(t)
@@ -114,10 +99,9 @@ def export_mgn(context,
 
     for vert in bm.vertices:
         mgn.positions.append([-vert.co[0],vert.co[2],-vert.co[1]])
-        mgn.normals.append([-vert.normal[0],vert.normal[2],-vert.normal[1]])
 
-    # for normal in normals:
-    #     mgn.normals.append([-normal[0], normal[2], -normal[1]])
+    for normal in normals:
+        mgn.normals.append([-normal[0], normal[2], -normal[1]])
 
     if do_tangents:
         mgn.dot3=[]
@@ -147,14 +131,9 @@ def export_mgn(context,
     faces_by_material = {}
     for f, f_index in face_index_pairs:
         if not f.material_index in faces_by_material:
-            faces_by_material[f.material_index] = []    
-            #print(f'Added material index: {f.material_index}')    
+            faces_by_material[f.material_index] = []   
         faces_by_material[f.material_index].append(f)
 
-    #print(f'faces_by_material: {[(str(len(faces_by_material[key]))) for key in faces_by_material]}')
-
-    
-    #num_uv_layers = len(bm.uv_layers)    
     uv_layer = bm.uv_layers.active.data[:]
     for material_index in faces_by_material:
         last_tri_index = None
@@ -162,22 +141,13 @@ def export_mgn(context,
         faces = faces_by_material[material_index]
         psdt = swg_types.SWGPerShaderData()
         psdt.name = current_obj.material_slots[material_index].material.name
-
-        # psdt.num_uvs = num_uv_layers
-        # for i in range(0, num_uv_layers):
-        #     psdt.uvs.append([])
-        #     psdt.uv_dimensions.append(2) # has to be 2 right?..
-
-        print(f'Material: {psdt.name}')
         mgn.psdts.append(psdt)
 
         reverse_position_lookup={}
         pidx_id = 0
-
         psdt.prims.append([])
         psdt.uvs.append([])
         psdt.dot3 = []
-
         
         for f in faces:
             t1=None
@@ -190,10 +160,8 @@ def export_mgn(context,
                     reverse_position_lookup[master_vert_id] =  pidx_id                    
                     pidx_id += 1
 
-                #if not master_vert_id in psdt.pidx:
                 psdt.pidx.append(master_vert_id)
-                psdt.nidx.append(master_vert_id)
-                #psdt.nidx.append(l_index)
+                psdt.nidx.append(l_index)
                 psdt.uvs[0].append(uv_layer[l_index].uv)
 
                 if do_tangents:
@@ -204,22 +172,14 @@ def export_mgn(context,
                     print(f"Starting last_tri_index at {last_tri_index}")
                     
                 if t1 == None:
-                    #t1 = reverse_position_lookup[master_vert_id]
-                    #t1 = running_tri_index - last_tri_index
                     t1 = running_tri_index
                 elif t2 == None:
-                    #t2 = reverse_position_lookup[master_vert_id]
-                    #t2 = running_tri_index - last_tri_index
                     t2 = running_tri_index
                 else:
-                    #t3 = reverse_position_lookup[master_vert_id]
-                    #t3 = running_tri_index - last_tri_index
                     t3 = running_tri_index
                     psdt.prims[0].append(t3)
                     psdt.prims[0].append(t2)
                     psdt.prims[0].append(t1)
-                    
-                    #print(f"Wrote tri {t1} {t2} {t3}")
 
                 running_tri_index += 1
 

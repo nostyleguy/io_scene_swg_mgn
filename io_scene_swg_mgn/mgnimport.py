@@ -20,63 +20,41 @@
 # Be aware that the import will mirror the UV map on the Y axis, which will
 # allow you to load the textures properly in Blender. (MGN UV's are upside down)
 # ##############################################################################
-import bpy, mathutils, struct, bmesh, array
+import bpy, struct, array
 from . import swg_types
-from bpy_extras.io_utils import (
-        ImportHelper,
-        #ExportHelper,
-        orientation_helper,
-        #path_reference_mode,
-        axis_conversion,
-        )
 
 from bpy.props import *
 from bpy_extras.io_utils import unpack_list, unpack_face_list
 from mathutils import Vector
-from . import iff_tools, mgn_tools
 
 def import_mgn( context, 
                 filepath, 
                 *,      
                 global_matrix=None):
 
-    #import_mgn_old(context, filepath)
-
     mgn = swg_types.SWGMgn(filepath)
     mgn.load()
 
     mesh_name = filepath.split('\\')[-1].split('.')[0]
-    blend_mesh = bpy.data.meshes.new(mesh_name)
+    mesh = bpy.data.meshes.new(mesh_name)
         
     edges=[]
     blender_verts = []
     blender_norms = []
     for v in mgn.positions:
-        blender_verts.append([-v[0],v[2],v[1]])
+        blender_verts.append([v[0],v[1],v[2]])
 
     for n in mgn.normals:
-        #blender_norms.append([-n[1],n[0],n[2]]) best so far on hum_m_head
-        blender_norms.append([-n[1],-n[0],n[2]])
-
-    #print(f"Global Matrix: {str(global_matrix)}")
-    # blend_mesh.transform(global_matrix)
-    # blend_mesh.update()
-
-    scene_object = bpy.data.objects.new(mesh_name, blend_mesh)
-    context.collection.objects.link(scene_object)
-
-    # scene_object.rotation_mode = 'XYZ'
-    # scene_object.rotation_euler = (1.57, 0, 0)
+        blender_norms.append([n[0],n[1],-n[2]])
 
     faces_by_material=[]
     normals=[]
     tris = []
     tris_flat = []
-    #vertices_flat = []
     uvs_flat = []
     for pid, psdt in enumerate(mgn.psdts):
         mat = bpy.data.materials.new(psdt.stripped_shader_name())
-        blend_mesh.materials.append(mat)        
+        mesh.materials.append(mat)        
         faces_by_material.append([])
 
         for prim in psdt.prims:
@@ -85,9 +63,9 @@ def import_mgn( context,
                 p2 = psdt.pidx[tri.p2]
                 p3 = psdt.pidx[tri.p1]
                 
-                normals.append(blender_norms[p1])
-                normals.append(blender_norms[p2])
-                normals.append(blender_norms[p3])
+                normals.append(blender_norms[psdt.nidx[tri.p3]])
+                normals.append(blender_norms[psdt.nidx[tri.p2]])
+                normals.append(blender_norms[psdt.nidx[tri.p1]])
 
                 tris_flat.append(p1)
                 tris_flat.append(p2)
@@ -107,41 +85,16 @@ def import_mgn( context,
                     uvs_flat[uv_layer_num].append(psdt.uvs[uv_layer_num][tri.p2])
                     uvs_flat[uv_layer_num].append(psdt.uvs[uv_layer_num][tri.p1])
 
-    print(f"Normals: Tris: {len(tris_flat) / 3} Normals: {str(len(normals))} {str(normals)}")
+    mesh.from_pydata(blender_verts, edges, tris)
+    mesh.use_auto_smooth = True
+    mesh.normals_split_custom_set(normals)
+    mesh.transform(global_matrix)
+    scene_object = bpy.data.objects.new(mesh_name, mesh)
+    context.collection.objects.link(scene_object)
+    mesh.validate()
+    mesh.update()        
 
-    #print(f'Mine: ({len(tris_flat)}), {str(tris_flat)}')
-
-    # print(f'Faces by material: {str(len(faces_by_material))}')
-    # for i, faces in enumerate(faces_by_material):
-    #     print(f'{i}: {str(len(faces))}')
-    
-    #blend_mesh.vertices.add(len(blender_verts))
-    #vertices_flat = [vv for v in blender_verts for vv in v]
-
-    #blend_mesh.vertices.foreach_set("co", vertices_flat) 
-    # blend_mesh.loops.add(len(tris_flat))
-    # blend_mesh.loops.foreach_set("vertex_index", tris_flat)
-    #blend_mesh.polygons.add(len(tris))
-
-    # loop_start = []
-    # loop_total = []
-    # for i in range(0, len(tris)):
-    #     loop_start.append(3*i)
-    #     loop_total.append(3)
-    
-    #blend_mesh.polygons.foreach_set("loop_start", loop_start)
-    #blend_mesh.polygons.foreach_set("loop_total", loop_total)
-
-    #blend_mesh.use_auto_smooth = True
-    #blend_mesh.normals_split_custom_set(normals)
-    #blend_mesh.normals_split_custom_set([(0, 0, 1) for l in blend_mesh.polygons])
-    blend_mesh.from_pydata(blender_verts, edges, tris)
-    #blend_mesh.use_auto_smooth = True
-    #blend_mesh.normals_split_custom_set(normals)
-
-    #blend_mesh.calc_normals_split()
-
-    for flist in blend_mesh.polygons: 
+    for flist in mesh.polygons: 
         for id, face_list in enumerate(faces_by_material):
             if flist.vertices[:] in face_list:
                 flist.material_index = id
@@ -151,8 +104,8 @@ def import_mgn( context,
         if len(uvs) != len(tris_flat):
             print(f'*** WARNING *** UV Layer: {i} -- Unmatched lengths of UVs ({len(uvs)}) and Tri indecies ({len(tris_flat)}). Skipping!')
             continue
-        uvlayer = blend_mesh.uv_layers.new(name=f'UVMap-{str(i)}')
-        blend_mesh.uv_layers.active = uvlayer
+        uvlayer = mesh.uv_layers.new(name=f'UVMap-{str(i)}')
+        mesh.uv_layers.active = uvlayer
         for ind, vert in enumerate(tris_flat):
             uv = [uvs[ind][0], 1 - uvs[ind][1]]
             uvlayer.data[ind].uv = uv
@@ -175,27 +128,9 @@ def import_mgn( context,
         sk = scene_object.shape_key_add(name=blend.name)
         for vert in blend.positions:
             id = vert[0]
-            delta = [-vert[1][0], -vert[1][2], vert[1][1]]
+            delta = [vert[1][0], vert[1][1], -vert[1][2]]
             delta_v = Vector(delta)
-            sk.data[id].co = scene_object.data.vertices[id].co + delta_v
-
-
-    print("Validate Mesh data")
-    #blend_mesh.calc_normals_split()
-    blend_mesh.calc_normals()
-    blend_mesh.validate()
-    blend_mesh.update() 
-    
-    print(f"Tris: {str(tris)}")
-
-    print(f"Has Custom Normals: {blend_mesh.has_custom_normals} Loops: {str(blend_mesh.loops)}")
-    
-    cl_nors = array.array('f', [0.0] * (len(blend_mesh.loops) * 3))
-    blend_mesh.loops.foreach_get('normal', cl_nors)
-    print(f"Cl_nors: {str(cl_nors)}")
-
-    for loop in blend_mesh.loops:
-        print(f"Ind: {loop.index} Vert: {loop.vertex_index} Norm: {loop.normal}")
+            sk.data[id].co = scene_object.data.vertices[id].co + (global_matrix @ delta_v)
     
     for i, skel in enumerate(mgn.skeletons):
         scene_object[f'SKTM_{i}'] = skel
