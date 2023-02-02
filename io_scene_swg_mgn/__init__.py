@@ -23,7 +23,7 @@
 bl_info = {
     'name': "SWG Animated Mesh (.mgn)",
     "author": "Nick Rafalski (bug fixes and Blender 3+ support)",
-    "version": (1, 0, 5),
+    "version": (1, 0, 6),
     "blender": (2, 81, 6),
     "location":"File > Import-Export",
     "description": "Import and Export SWG animated meshes(.mgn)",

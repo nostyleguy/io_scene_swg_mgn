@@ -105,8 +105,9 @@ def export_mgn(context,
 
     if do_tangents:
         mgn.dot3=[]
-        for i, tang in enumerate(tang_lib):
-            mgn.dot3.append([-tang[0], tang[2], -tang[1], tang[3]])
+        for i, loop in enumerate(bm.loops):
+            tang = loop.tangent
+            mgn.dot3.append([ -tang[0], tang[2], -tang[1], loop.bitangent_sign])
 
     twhd = []
     twdt = []
